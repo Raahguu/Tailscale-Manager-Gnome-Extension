@@ -1,0 +1,10 @@
+{
+  "name": "Tailscale Manager",
+  "description": "A simple UI to manage tailscale from the desktop",
+  "uuid": "tailscale-manager@tailscale-manager.raahguu.dev",
+  "shell-version": [
+    "46"
+  ],
+  "version": "1.0",
+  "url": ""
+}
