@@ -6,11 +6,13 @@ import St from "gi://St";
 //import * as Util from "resource:///org/gnome/shell/misc/util.js";
 
 import GObject from "gi://GObject";
-import GLib from "gi://GLib";
+//import GLib from "gi://GLib";
 import Gio from "gi://Gio";
 
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
+
+let IPv6_over_4 = false;
 
 import {
   Extension,
@@ -34,7 +36,7 @@ const TailscaleControler = {
       // Run the command asynchronously and pass in the function to call when we get it back
       proc.communicate_utf8_async(null, null, (proc, res) => {
         // get the output of the function
-        let [, stdout, stderr] = proc.communicate_utf8_finish(res);
+        const [, stdout, stderr] = proc.communicate_utf8_finish(res);
 
         // if it threw an error
         if (!proc.get_successful()) {
@@ -56,10 +58,10 @@ const TailscaleControler = {
 
   // Gets the current tailscale status and then calls setStatusUI to inform it of the new status
   GetTailscaleStatus: function () {
-    let success = TailscaleControler.Control(
+    const success = TailscaleControler.Control(
       ["tailscale", "status", "--json"],
       (stdout) => {
-        let jsonData = JSON.parse(stdout);
+        const jsonData = JSON.parse(stdout);
         tailscale_manager.setStatusUI(jsonData["BackendState"] == "Running");
       },
     );
@@ -79,15 +81,62 @@ const TailscaleControler = {
       return false;
     }
 
-    let arg = "";
-    arg = state ? "up" : "down";
-    let success = TailscaleControler.Control(["tailscale", arg], (_) => {
+    const arg = state ? "up" : "down";
+    const success = TailscaleControler.Control(["tailscale", arg], (_) => {
       TailscaleControler.GetTailscaleStatus();
     });
 
     // Error check if it worked
     if (success == false) {
       myError("SetTailscaleStatus Failed");
+    }
+    return success;
+  },
+
+  // Get all the tailscale node elements and set the submenu to contain them
+  GetTailscaleNodes: function () {
+    const success = TailscaleControler.Control(
+      ["tailscale", "status", "--json"],
+      (stdout) => {
+        const jsonData = JSON.parse(stdout);
+
+        let nodes = [];
+
+        // add the current computer to the list
+        const self = jsonData["Self"];
+        let current_node = {
+          name: self["HostName"],
+          status: self["Online"],
+          status_string: "💻",
+          ip: self["TailscaleIPs"][+IPv6_over_4],
+        };
+        nodes.push(current_node);
+
+        // get just the json data containing all the peers
+        const peers = jsonData["Peer"];
+        // gets all the keys in peers which are the node keys
+        for (const i in peers) {
+          // get the actual json data for each node as 'peer'
+          const peer = peers[i];
+          // create the node object
+          let node = {
+            name: peer["HostName"],
+            status: peer["Online"],
+            status_string: peer["Online"] ? "🟢" : "🔴",
+            ip: peer["TailscaleIPs"][+IPv6_over_4],
+          };
+          // build up the nodes list
+          nodes.push(node);
+        }
+
+        // actually change the UI
+        tailscale_manager.SetNodesUI(nodes);
+      },
+    );
+
+    // Check if it worked
+    if (success == false) {
+      myError("GetTailscaleNodes failed");
     }
     return success;
   },
@@ -115,12 +164,13 @@ const TailscaleMenu = GObject.registerClass(
     // Event handler for when the system tray icon is clicked
     _onButtonClick() {
       TailscaleControler.GetTailscaleStatus();
+      TailscaleControler.GetTailscaleNodes();
     }
 
     // Set the icon and the toggle
     setStatusUI(status) {
-      let icon_on = Gio.icon_new_for_string(this.dir_path + "/icon-on.svg");
-      let icon_off = Gio.icon_new_for_string(this.dir_path + "/icon-off.svg");
+      const icon_on = Gio.icon_new_for_string(this.dir_path + "/icon-on.svg");
+      const icon_off = Gio.icon_new_for_string(this.dir_path + "/icon-off.svg");
 
       let used_icon = icon_off;
       let status_string = "Off";
@@ -144,7 +194,7 @@ const TailscaleMenu = GObject.registerClass(
       // Set the status toggle in the menu
       if (this.status_item) {
         this.status_item.label.text = status_string;
-        this.setToggledState(status);
+        this.status_item.setToggleState(status);
       } else {
         this.status_item = new PopupMenu.PopupSwitchMenuItem(
           status_string,
@@ -160,6 +210,28 @@ const TailscaleMenu = GObject.registerClass(
         });
         this.menu.addMenuItem(this.status_item);
       }
+    }
+
+    SetNodesUI(nodes) {
+      // remove the old one
+      if (this.nodes_submenu) {
+        this.nodes_submenu.menu.removeAll();
+      } else {
+        this.nodes_submenu = new PopupMenu.PopupSubMenuMenuItem("Nodes", false);
+        this.menu.addMenuItem(this.nodes_submenu);
+      }
+
+      nodes.forEach((node) => {
+        this.nodes_submenu.menu.addAction(
+          node.status_string + " " + node.name,
+          () => {
+            St.Clipboard.get_default().set_text(
+              St.ClipboardType.CLIPBOARD,
+              node.ip,
+            );
+          },
+        );
+      });
     }
   },
 );
