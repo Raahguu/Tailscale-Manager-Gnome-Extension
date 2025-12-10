@@ -62,7 +62,7 @@ const TailscaleControler = {
       ["tailscale", "status", "--json"],
       (stdout) => {
         const jsonData = JSON.parse(stdout);
-        tailscale_manager.setStatusUI(jsonData["BackendState"] == "Running");
+        tailscale_manager.SetStatusUI(jsonData["BackendState"] == "Running");
       },
     );
 
@@ -104,13 +104,13 @@ const TailscaleControler = {
 
         // add the current computer to the list
         const self = jsonData["Self"];
-        let current_node = {
+        const self_node = {
           name: self["HostName"],
           status: self["Online"],
           status_string: "💻",
           ip: self["TailscaleIPs"][+IPv6_over_4],
         };
-        nodes.push(current_node);
+        nodes.push(self_node);
 
         // get just the json data containing all the peers
         const peers = jsonData["Peer"];
@@ -119,7 +119,7 @@ const TailscaleControler = {
           // get the actual json data for each node as 'peer'
           const peer = peers[i];
           // create the node object
-          let node = {
+          const node = {
             name: peer["HostName"],
             status: peer["Online"],
             status_string: peer["Online"] ? "🟢" : "🔴",
@@ -140,6 +140,82 @@ const TailscaleControler = {
     }
     return success;
   },
+
+  GetExitNodes: function () {
+    const success = TailscaleControler.Control(
+      ["tailscale", "status", "--json"],
+      (stdout) => {
+        const jsonData = JSON.parse(stdout);
+        let exit_nodes = [];
+
+        // get just the json data containing all the peers
+        const peers = jsonData["Peer"];
+        // gets all the keys in peers which are the node keys
+        for (const i in peers) {
+          // get the actual json data for each node as 'peer'
+          const peer = peers[i];
+          if (peer["ExitNodeOption"] == false) {
+            continue;
+          }
+          // create the exit_node object
+          const exit_node = {
+            name: peer["HostName"],
+            status: peer["Online"],
+            status_string: peer["ExitNode"] ? "●" : "○",
+            ip: peer["TailscaleIPs"][+IPv6_over_4],
+            current_exit_node: peer["ExitNode"],
+          };
+
+          console.log(exit_node.current_exit_node);
+          // build up the nodes list
+          exit_nodes.push(exit_node);
+        }
+
+        const using_none_exit_node = !exit_nodes.reduce(
+          (accumulator, current_value) => {
+            return accumulator + current_value.current_exit_node;
+          },
+          0,
+        );
+        console.log(using_none_exit_node);
+
+        const none_exit_node = {
+          name: "none",
+          status: true,
+          status_string: using_none_exit_node ? "●" : "○",
+          ip: "",
+          current_exit_node: using_none_exit_node,
+        };
+
+        exit_nodes.unshift(none_exit_node);
+
+        tailscale_manager.SetExitNodesUI(exit_nodes);
+      },
+    );
+
+    // Check for  errors
+    if (success == false) {
+      myError("GetExitNodes failed");
+    }
+    return success;
+  },
+
+  SetExitNode: function (exit_node_name) {
+    // Set the exit node
+    const success = TailscaleControler.Control(
+      ["tailscale", "set", "--exit-node=" + exit_node_name],
+      (stdout) => {
+        // Now get the exit node and set the UI
+        TailscaleControler.GetExitNodes();
+      },
+    );
+
+    // Check for errors
+    if (success == false) {
+      myError("SetExitNode failed");
+    }
+    return success;
+  },
 };
 
 // The actual menu item class
@@ -152,23 +228,25 @@ const TailscaleMenu = GObject.registerClass(
       this.icon = null;
       this.status_item = null;
       this.nodes_submenu = null;
+      this.exit_nodes_submenu = null;
 
       super._init(0);
       // Get the original status and setup the menu
       TailscaleControler.GetTailscaleStatus();
 
       // Call _onButtonClick when the system tray icon is ever clicked
-      this.connect("button-press-event", this._onButtonClick.bind(this));
+      this.connect("button-press-event", this._OnButtonClick.bind(this));
     }
 
     // Event handler for when the system tray icon is clicked
-    _onButtonClick() {
+    _OnButtonClick() {
       TailscaleControler.GetTailscaleStatus();
       TailscaleControler.GetTailscaleNodes();
+      TailscaleControler.GetExitNodes();
     }
 
     // Set the icon and the toggle
-    setStatusUI(status) {
+    SetStatusUI(status) {
       const icon_on = Gio.icon_new_for_string(this.dir_path + "/icon-on.svg");
       const icon_off = Gio.icon_new_for_string(this.dir_path + "/icon-off.svg");
 
@@ -213,7 +291,7 @@ const TailscaleMenu = GObject.registerClass(
     }
 
     SetNodesUI(nodes) {
-      // remove the old one
+      // remove the old nodes
       if (this.nodes_submenu) {
         this.nodes_submenu.menu.removeAll();
       } else {
@@ -229,6 +307,32 @@ const TailscaleMenu = GObject.registerClass(
               St.ClipboardType.CLIPBOARD,
               node.ip,
             );
+          },
+        );
+      });
+    }
+
+    SetExitNodesUI(nodes) {
+      // remove the old nodes
+      if (this.exit_nodes_submenu) {
+        this.exit_nodes_submenu.menu.removeAll();
+      } else {
+        this.exit_nodes_submenu = new PopupMenu.PopupSubMenuMenuItem(
+          "Exit Nodes",
+          false,
+        );
+        this.menu.addMenuItem(this.exit_nodes_submenu);
+      }
+
+      nodes.forEach((exit_node) => {
+        this.exit_nodes_submenu.menu.addAction(
+          exit_node.status_string + " " + exit_node.name,
+          () => {
+            // There is no point running a command to change the exit node into the same exit node
+            if (exit_node.current_exit_node == true) {
+              return 0;
+            }
+            TailscaleControler.SetExitNode(exit_node.ip);
           },
         );
       });
