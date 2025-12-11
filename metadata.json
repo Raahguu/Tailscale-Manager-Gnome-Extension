@@ -1,11 +1,8 @@
 {
   "name": "Tailscale Manager",
-  "description": "A simple UI to manage tailscale from the desktop",
+  "description": "A simple UI to manage tailscale from the desktop. Can copy IPs onto the clipboard.",
   "uuid": "tailscale-manager@tailscale-manager.raahguu.dev",
-  "shell-version": [
-    "46"
-  ],
-  "version": "1.0",
+  "shell-version": ["46"],
   "url": "https://github.com/Raahguu/Tailscale-Manager-Gnome-Extension/",
   "settings-schema": "org.gnome.shell.extensions.tailscale-manager"
 }

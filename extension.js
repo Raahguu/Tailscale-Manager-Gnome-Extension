@@ -12,9 +12,6 @@ import {
   gettext as _,
 } from "resource:///org/gnome/shell/extensions/extension.js";
 
-// Set default settings as global variables
-let IPv6_over_4 = false;
-
 function myError(string) {
   console.log("Error [tailscale-manager]: " + string);
 }
@@ -108,7 +105,7 @@ const TailscaleControler = {
           name: self["HostName"],
           status: self["Online"],
           status_string: "💻",
-          ip: self["TailscaleIPs"][+IPv6_over_4],
+          ip: self["TailscaleIPs"][+tailscale_manager.settings.IPv6_over_4],
         };
         nodes.push(self_node);
 
@@ -123,7 +120,7 @@ const TailscaleControler = {
             name: peer["HostName"],
             status: peer["Online"],
             status_string: peer["Online"] ? "🟢" : "🔴",
-            ip: peer["TailscaleIPs"][+IPv6_over_4],
+            ip: peer["TailscaleIPs"][+tailscale_manager.settings.IPv6_over_4],
           };
           // build up the nodes list
           nodes.push(node);
@@ -162,7 +159,7 @@ const TailscaleControler = {
             name: peer["HostName"],
             status: peer["Online"],
             status_string: peer["ExitNode"] ? "●" : "○",
-            ip: peer["TailscaleIPs"][+IPv6_over_4],
+            ip: peer["TailscaleIPs"][+tailscale_manager.settings.IPv6_over_4],
             current_exit_node: peer["ExitNode"],
           };
           // build up the nodes list
@@ -223,6 +220,7 @@ const TailscaleMenu = GObject.registerClass(
     _init(dir_path, caller) {
       // Define our properties
       this.dir_path = dir_path;
+      this.settings = null;
       this.icon = null;
       this.status_item = null;
       this.nodes_submenu = null;
@@ -272,16 +270,22 @@ const TailscaleMenu = GObject.registerClass(
     }
 
     setupSettings(caller) {
+      // Create the settings object other objects can then call
+      this.settings = {
+        IPv6_over_4: false,
+      };
+
       // Get the settings and save them to _settings property
       caller._settings = caller.getSettings();
 
       // copy-ipv6 setting
       // set the current value
-      IPv6_over_4 =
+      this.settings.IPv6_over_4 =
         caller._settings.get_value("copy-ipv6").print(true) == "true";
       // set an event listener to check if 'copy-ipv6' ever changes and set 'IPv6_over_4' to its new value
       caller._settings.connect("changed::copy-ipv6", (settings, key) => {
-        IPv6_over_4 = settings.get_value(key).print(true) == "true";
+        this.settings.IPv6_over_4 =
+          settings.get_value(key).print(true) == "true";
       });
     }
 
