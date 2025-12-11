@@ -6,5 +6,6 @@
     "46"
   ],
   "version": "1.0",
-  "url": ""
+  "url": "https://github.com/Raahguu/Tailscale-Manager-Gnome-Extension/",
+  "settings-schema": "org.gnome.shell.extensions.tailscale-manager"
 }

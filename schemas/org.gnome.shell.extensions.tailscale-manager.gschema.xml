@@ -1,0 +1,9 @@
+<schemalist>
+  <schema id="org.gnome.shell.extensions.tailscale-manager" path="/org/gnome/shell/extensions/tailscale-manager/">
+    <key name="copy-ipv6" type="b">
+      <default>false</default>
+      <summary>When copying the IP of any node, either the IPv4 ip or the IPv6 ip can be copied. If this setting is false then an IPv4 address will be copied, if true an IPv6 address will be copied. If the node only has one available IP then that will be used no matter this setting</summary>
+    </key>
+  </schema>
+</schemalist>
+

@@ -1,23 +1,19 @@
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import St from "gi://St";
-//import Clutter from "gi://Clutter";
-
-//import * as ExtensionUtils from "resource:///org/gnome/shell/misc/extensionUtils.js";
-//import * as Util from "resource:///org/gnome/shell/misc/util.js";
 
 import GObject from "gi://GObject";
-//import GLib from "gi://GLib";
 import Gio from "gi://Gio";
 
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 
-let IPv6_over_4 = false;
-
 import {
   Extension,
   gettext as _,
 } from "resource:///org/gnome/shell/extensions/extension.js";
+
+// Set default settings as global variables
+let IPv6_over_4 = false;
 
 function myError(string) {
   console.log("Error [tailscale-manager]: " + string);
@@ -169,8 +165,6 @@ const TailscaleControler = {
             ip: peer["TailscaleIPs"][+IPv6_over_4],
             current_exit_node: peer["ExitNode"],
           };
-
-          console.log(exit_node.current_exit_node);
           // build up the nodes list
           exit_nodes.push(exit_node);
         }
@@ -181,7 +175,6 @@ const TailscaleControler = {
           },
           0,
         );
-        console.log(using_none_exit_node);
 
         const none_exit_node = {
           name: "none",
@@ -227,7 +220,7 @@ const TailscaleControler = {
 const TailscaleMenu = GObject.registerClass(
   class TailscaleMenu extends PanelMenu.Button {
     // The initliasation function that gets called when GNOME starts to create the item
-    _init(dir_path) {
+    _init(dir_path, caller) {
       // Define our properties
       this.dir_path = dir_path;
       this.icon = null;
@@ -235,15 +228,65 @@ const TailscaleMenu = GObject.registerClass(
       this.nodes_submenu = null;
       this.exit_nodes_submenu = null;
 
+      // Call the super classes initialisation to do complex stuff
       super._init(0);
-      // Get the original status and setup the menu
+
+      // Set up the original menu
+      this.setupMenu(caller);
+      this.setupSettings(caller);
+      // Update the menu externally
       TailscaleControler.GetTailscaleStatus();
 
       // Call _onButtonClick when the system tray icon is ever clicked
       this.connect("button-press-event", this._OnButtonClick.bind(this));
     }
 
+    setupMenu(caller) {
+      // Status toggle
+      this.status_item = new PopupMenu.PopupSwitchMenuItem("Off", false);
+      // event listener
+      this.status_item.connect("toggled", () => {
+        if (this.status_item.state) {
+          TailscaleControler.SetTailscaleStatus(true);
+        } else {
+          TailscaleControler.SetTailscaleStatus(false);
+        }
+      });
+
+      // Nodes submenu
+      this.nodes_submenu = new PopupMenu.PopupSubMenuMenuItem("Nodes", false);
+
+      // Exit Nodes submenu
+      this.exit_nodes_submenu = new PopupMenu.PopupSubMenuMenuItem(
+        "Exit Nodes",
+        false,
+      );
+
+      // Adding the children, this order affects where they appear in the menu
+      this.menu.addMenuItem(this.status_item);
+      this.menu.addMenuItem(this.nodes_submenu);
+      this.menu.addMenuItem(this.exit_nodes_submenu);
+
+      // Add Preferences menu item
+      this.menu.addAction(_("Preferences"), () => caller.openPreferences());
+    }
+
+    setupSettings(caller) {
+      // Get the settings and save them to _settings property
+      caller._settings = caller.getSettings();
+
+      // copy-ipv6 setting
+      // set the current value
+      IPv6_over_4 =
+        caller._settings.get_value("copy-ipv6").print(true) == "true";
+      // set an event listener to check if 'copy-ipv6' ever changes and set 'IPv6_over_4' to its new value
+      caller._settings.connect("changed::copy-ipv6", (settings, key) => {
+        IPv6_over_4 = settings.get_value(key).print(true) == "true";
+      });
+    }
+
     // Event handler for when the system tray icon is clicked
+    // This is used to update all the menu internals before the user sees it
     _OnButtonClick() {
       TailscaleControler.GetTailscaleStatus();
       TailscaleControler.GetTailscaleNodes();
@@ -281,35 +324,14 @@ const TailscaleMenu = GObject.registerClass(
         this.add_child(this.icon);
       }
 
-      // Set the status toggle in the menu
-      if (this.status_item) {
-        this.status_item.label.text = status_string;
-        this.status_item.setToggleState(status);
-      } else {
-        this.status_item = new PopupMenu.PopupSwitchMenuItem(
-          status_string,
-          status,
-        );
-        //
-        this.status_item.connect("toggled", () => {
-          if (this.status_item.state) {
-            TailscaleControler.SetTailscaleStatus(true);
-          } else {
-            TailscaleControler.SetTailscaleStatus(false);
-          }
-        });
-        this.menu.addMenuItem(this.status_item);
-      }
+      // Set the status toggle in the menu and the label for it
+      this.status_item.label.text = status_string;
+      this.status_item.setToggleState(status);
     }
 
     SetNodesUI(nodes) {
       // remove the old nodes
-      if (this.nodes_submenu) {
-        this.nodes_submenu.menu.removeAll();
-      } else {
-        this.nodes_submenu = new PopupMenu.PopupSubMenuMenuItem("Nodes", false);
-        this.menu.addMenuItem(this.nodes_submenu);
-      }
+      this.nodes_submenu.menu.removeAll();
 
       nodes.forEach((node) => {
         this.nodes_submenu.menu.addAction(
@@ -326,15 +348,7 @@ const TailscaleMenu = GObject.registerClass(
 
     SetExitNodesUI(nodes) {
       // remove the old nodes
-      if (this.exit_nodes_submenu) {
-        this.exit_nodes_submenu.menu.removeAll();
-      } else {
-        this.exit_nodes_submenu = new PopupMenu.PopupSubMenuMenuItem(
-          "Exit Nodes",
-          false,
-        );
-        this.menu.addMenuItem(this.exit_nodes_submenu);
-      }
+      this.exit_nodes_submenu.menu.removeAll();
 
       nodes.forEach((exit_node) => {
         this.exit_nodes_submenu.menu.addAction(
@@ -355,12 +369,15 @@ const TailscaleMenu = GObject.registerClass(
 let tailscale_manager;
 export default class TailscaleManagerExtension extends Extension {
   enable() {
-    tailscale_manager = new TailscaleMenu(this.path);
+    // Setup the menu
+    tailscale_manager = new TailscaleMenu(this.path, this);
+    // Add to system tray
     Main.panel.addToStatusArea("Tailscale Manager", tailscale_manager, 1);
   }
 
   disable() {
     tailscale_manager.destroy();
+    this._settings = null;
     tailscale_manager = null;
   }
 }
