@@ -62,7 +62,11 @@ const TailscaleControler = {
       ["tailscale", "status", "--json"],
       (stdout) => {
         const jsonData = JSON.parse(stdout);
-        tailscale_manager.SetStatusUI(jsonData["BackendState"] == "Running");
+        for (const i in jsonData["Peer"])
+          tailscale_manager.SetStatusUI(
+            jsonData["BackendState"] == "Running",
+            jsonData.hasOwnProperty("ExitNodeStatus"),
+          );
       },
     );
 
@@ -207,6 +211,7 @@ const TailscaleControler = {
       (stdout) => {
         // Now get the exit node and set the UI
         TailscaleControler.GetExitNodes();
+        TailscaleControler.GetTailscaleStatus();
       },
     );
 
@@ -246,15 +251,22 @@ const TailscaleMenu = GObject.registerClass(
     }
 
     // Set the icon and the toggle
-    SetStatusUI(status) {
+    SetStatusUI(status, using_exit_node) {
       const icon_on = Gio.icon_new_for_string(this.dir_path + "/icon-on.svg");
       const icon_off = Gio.icon_new_for_string(this.dir_path + "/icon-off.svg");
+      const icon_exit_node = Gio.icon_new_for_string(
+        this.dir_path + "/icon-exit-node.png",
+      );
 
       let used_icon = icon_off;
       let status_string = "Off";
 
       if (status == true) {
-        used_icon = icon_on;
+        if (using_exit_node == true) {
+          used_icon = icon_exit_node;
+        } else {
+          used_icon = icon_on;
+        }
         status_string = "On";
       }
 
